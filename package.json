@@ -1,0 +1,17 @@
+{
+  "name": "companion-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Backend scheduler endpoints for Companion app notifications",
+  "type": "module",
+  "scripts": {
+    "start": "vercel dev",
+    "health": "node -e \"console.log('companion-backend ok')\""
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  },
+  "devDependencies": {
+    "vercel": "^39.0.0"
+  }
+}
