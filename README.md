@@ -1,18 +1,41 @@
 # Companion Backend
 
-Vercel backend for Companion PWA notifications.
+Vercel backend endpoints for Companion PWA notifications.
 
 ## Endpoints
 
-- `/api/health` - health check
-- `/api/test-push?secret=CRON_SECRET` - sends manual test push
-- `/api/weather-alert-check?secret=CRON_SECRET&lat=56.9496&lon=24.1052&city=Riga` - real weather/AQI alert check
-- `/api/weather-alert-check?secret=CRON_SECRET&lat=56.9496&lon=24.1052&city=Riga&force=1` - forced manual weather test; do not use in cron
+- `/api/health`
+- `/api/test-push?secret=...`
+- `/api/weather-alert-check?secret=...`
+- `/api/weather-alert-check?secret=...&force=1` for manual weather push test only
+- `/api/debug-tokens?secret=...` to inspect stored token settings/location without exposing full FCM tokens
 
-## Required Vercel environment variables
+## v3 changes
 
-- `FIREBASE_SERVICE_ACCOUNT_JSON`
-- `CRON_SECRET`
-- `DEFAULT_LAT`
-- `DEFAULT_LON`
-- `DEFAULT_CITY`
+Weather/AQI notification checks are now location-aware.
+
+The backend reads location from each Firestore `notification_tokens/{docId}` document using one of these shapes:
+
+```json
+{
+  "selectedLocation": { "city": "Ahmedabad", "lat": 23.0225, "lon": 72.5714 }
+}
+```
+
+or:
+
+```json
+{
+  "city": "Ahmedabad",
+  "lat": 23.0225,
+  "lon": 72.5714
+}
+```
+
+Fallback remains `DEFAULT_CITY`, `DEFAULT_LAT`, and `DEFAULT_LON` if the token document has no location.
+
+Cron URL should use the stable production domain and no `force=1`:
+
+```txt
+https://companion-vercel-roan.vercel.app/api/weather-alert-check?secret=YOUR_SECRET
+```

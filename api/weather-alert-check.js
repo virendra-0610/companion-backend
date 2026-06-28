@@ -15,16 +15,7 @@ export default async function handler(req, res) {
     return res.status(auth.status).json({ ok: false, error: auth.message });
   }
 
-  const lat = Number(req.query.lat || process.env.DEFAULT_LAT || 56.9496);
-  const lon = Number(req.query.lon || process.env.DEFAULT_LON || 24.1052);
-  const city = String(req.query.city || process.env.DEFAULT_CITY || "Riga");
-
-  // Test-only switch. Use only manually, not in cron-job.org.
   const force = String(req.query.force || "").toLowerCase() === "true" || req.query.force === "1";
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-    return res.status(400).json({ ok: false, error: "Invalid lat/lon" });
-  }
 
   try {
     const tokens = await getNotificationTokens();
@@ -33,117 +24,272 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, sent: 0, message: "No notification tokens found" });
     }
 
-    const { weather, air } = await getWeatherAndAirQuality({ lat, lon });
-    const detectedAlert = analyzeAlert({ weather, air, city });
+    const defaultLocation = resolveRequestDefaultLocation(req);
+    const groups = groupTokensByLocation(tokens, defaultLocation);
 
-    const alert = force
-      ? {
-          type: "forced_weather_test",
-          severity: "low",
-          title: `Weather alert test for ${city}`,
-          body: "Forced test notification from Companion weather scheduler. Real cron will send only when conditions match."
-        }
-      : detectedAlert;
+    const groupResults = [];
+    let totalSent = 0;
+    let totalSkipped = 0;
+    let totalFailed = 0;
 
-    if (!alert) {
-      return res.status(200).json({
-        ok: true,
-        sent: 0,
-        city,
-        message: "No alert condition found",
-        debug: buildDebugSummary({ weather, air })
-      });
-    }
+    for (const group of groups) {
+      const { lat, lon, city } = group.location;
 
-    const today = new Date().toISOString().slice(0, 10);
-    const alertKey = `${city.toLowerCase()}_${alert.type}_${today}`;
+      const { weather, air } = await getWeatherAndAirQuality({ lat, lon });
+      const detectedAlert = analyzeAlert({ weather, air, city });
 
-    // Skip duplicate protection only for forced manual test.
-    if (!force) {
-      const recentlySent = await wasRecentlySent({ key: alertKey, hours: 6 });
-
-      if (recentlySent) {
-        return res.status(200).json({
-          ok: true,
-          sent: 0,
-          skipped: true,
-          reason: "Duplicate protection active",
-          alert,
-          debug: buildDebugSummary({ weather, air })
-        });
-      }
-    }
-
-    const results = [];
-    let sent = 0;
-
-    for (const item of tokens) {
-      const settings = item.data || {};
-
-      const weatherEnabled =
-        settings.weatherAlertsEnabled ??
-        settings.weatherAlerts ??
-        settings.enableWeatherAlerts ??
-        true;
-
-      const aqiEnabled =
-        settings.aqiAlertsEnabled ??
-        settings.aqiAlerts ??
-        settings.enableAqiAlerts ??
-        true;
-
-      if (alert.type.includes("aqi") && !aqiEnabled) {
-        results.push({ docId: item.docId, ok: true, skipped: true, reason: "AQI alerts disabled" });
-        continue;
-      }
-
-      if (!alert.type.includes("aqi") && !weatherEnabled) {
-        results.push({ docId: item.docId, ok: true, skipped: true, reason: "Weather alerts disabled" });
-        continue;
-      }
-
-      try {
-        const messageId = await sendPushToToken({
-          token: item.token,
-          title: alert.title,
-          body: alert.body,
-          data: {
-            type: alert.type,
-            severity: alert.severity,
-            city,
-            force: force ? "true" : "false"
+      const alert = force
+        ? {
+            type: "forced_weather_test",
+            severity: "low",
+            title: `Weather alert test for ${city}`,
+            body: `Forced test notification from Companion weather scheduler for ${city}. Real cron will send only when conditions match.`
           }
+        : detectedAlert;
+
+      const debug = buildDebugSummary({ weather, air });
+
+      if (!alert) {
+        totalSkipped += group.tokens.length;
+        groupResults.push({
+          city,
+          lat,
+          lon,
+          sent: 0,
+          skipped: group.tokens.length,
+          message: "No alert condition found",
+          debug
         });
+        continue;
+      }
 
-        sent += 1;
-        results.push({ docId: item.docId, ok: true, messageId });
-      } catch (error) {
-        const msg = error.message || "";
+      const today = new Date().toISOString().slice(0, 10);
+      const tokenResults = [];
+      let groupSent = 0;
+      let groupSkipped = 0;
+      let groupFailed = 0;
 
-        if (msg.includes("registration-token-not-registered") || msg.includes("invalid-registration-token")) {
-          await removeBadToken(item.docId);
+      for (const item of group.tokens) {
+        const settings = item.data || {};
+        const weatherEnabled = getBooleanSetting(settings, [
+          "weatherAlertsEnabled",
+          "weatherAlerts",
+          "enableWeatherAlerts"
+        ], true);
+        const aqiEnabled = getBooleanSetting(settings, [
+          "aqiAlertsEnabled",
+          "aqiAlerts",
+          "enableAqiAlerts"
+        ], true);
+
+        if (alert.type.includes("aqi") && !aqiEnabled) {
+          groupSkipped += 1;
+          tokenResults.push({ docId: item.docId, ok: true, skipped: true, reason: "AQI alerts disabled" });
+          continue;
         }
 
-        results.push({ docId: item.docId, ok: false, error: msg });
-      }
-    }
+        if (!alert.type.includes("aqi") && !weatherEnabled) {
+          groupSkipped += 1;
+          tokenResults.push({ docId: item.docId, ok: true, skipped: true, reason: "Weather alerts disabled" });
+          continue;
+        }
 
-    if (sent > 0 && !force) {
-      await markSent({ key: alertKey, payload: { city, alert, sentCount: sent } });
+        const alertKey = safeHistoryKey(`weather_${item.docId}_${city}_${alert.type}_${today}`);
+
+        if (!force) {
+          const recentlySent = await wasRecentlySent({ key: alertKey, hours: 6 });
+          if (recentlySent) {
+            groupSkipped += 1;
+            tokenResults.push({
+              docId: item.docId,
+              ok: true,
+              skipped: true,
+              reason: "Duplicate protection active"
+            });
+            continue;
+          }
+        }
+
+        try {
+          const messageId = await sendPushToToken({
+            token: item.token,
+            title: alert.title,
+            body: alert.body,
+            data: {
+              type: alert.type,
+              severity: alert.severity,
+              city,
+              lat: String(lat),
+              lon: String(lon),
+              force: force ? "true" : "false"
+            }
+          });
+
+          groupSent += 1;
+          tokenResults.push({ docId: item.docId, ok: true, messageId });
+
+          if (!force) {
+            await markSent({
+              key: alertKey,
+              payload: {
+                city,
+                lat,
+                lon,
+                alert,
+                tokenDocId: item.docId,
+                sentCount: 1
+              }
+            });
+          }
+        } catch (error) {
+          const msg = error.message || "";
+          groupFailed += 1;
+
+          if (msg.includes("registration-token-not-registered") || msg.includes("invalid-registration-token")) {
+            await removeBadToken(item.docId);
+          }
+
+          tokenResults.push({ docId: item.docId, ok: false, error: msg });
+        }
+      }
+
+      totalSent += groupSent;
+      totalSkipped += groupSkipped;
+      totalFailed += groupFailed;
+
+      groupResults.push({
+        city,
+        lat,
+        lon,
+        sent: groupSent,
+        skipped: groupSkipped,
+        failed: groupFailed,
+        forced: force,
+        alert,
+        debug,
+        results: tokenResults
+      });
     }
 
     return res.status(200).json({
       ok: true,
-      city,
-      sent,
+      mode: "location-aware",
       forced: force,
-      alert,
-      debug: buildDebugSummary({ weather, air }),
-      results
+      tokenCount: tokens.length,
+      locationCount: groups.length,
+      sent: totalSent,
+      skipped: totalSkipped,
+      failed: totalFailed,
+      groups: groupResults
     });
   } catch (error) {
     return res.status(500).json({ ok: false, error: error.message });
   }
+}
+
+function resolveRequestDefaultLocation(req) {
+  const lat = Number(req.query.lat || process.env.DEFAULT_LAT || 56.9496);
+  const lon = Number(req.query.lon || process.env.DEFAULT_LON || 24.1052);
+  const city = String(req.query.city || process.env.DEFAULT_CITY || "Riga").trim() || "Riga";
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    throw new Error("Invalid default lat/lon");
+  }
+
+  return { lat, lon, city };
+}
+
+function groupTokensByLocation(tokens, defaultLocation) {
+  const map = new Map();
+
+  for (const item of tokens) {
+    const location = resolveTokenLocation(item.data, defaultLocation);
+    const key = `${roundCoord(location.lat)},${roundCoord(location.lon)},${location.city.toLowerCase()}`;
+
+    if (!map.has(key)) {
+      map.set(key, { location, tokens: [] });
+    }
+
+    map.get(key).tokens.push(item);
+  }
+
+  return Array.from(map.values());
+}
+
+function resolveTokenLocation(data = {}, defaultLocation) {
+  const candidates = [
+    data.selectedLocation,
+    data.currentLocation,
+    data.location,
+    data.weatherLocation,
+    data.homeLocation,
+    data
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = parseLocationCandidate(candidate);
+    if (parsed) return parsed;
+  }
+
+  return defaultLocation;
+}
+
+function parseLocationCandidate(candidate) {
+  if (!candidate || typeof candidate !== "object") return null;
+
+  const lat = Number(
+    candidate.lat ??
+      candidate.latitude ??
+      candidate.coord?.lat ??
+      candidate.coords?.lat ??
+      candidate.position?.lat
+  );
+
+  const lon = Number(
+    candidate.lon ??
+      candidate.lng ??
+      candidate.longitude ??
+      candidate.coord?.lon ??
+      candidate.coords?.lon ??
+      candidate.coords?.lng ??
+      candidate.position?.lon ??
+      candidate.position?.lng
+  );
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+
+  const city = String(
+    candidate.city ??
+      candidate.name ??
+      candidate.label ??
+      candidate.displayName ??
+      candidate.address?.city ??
+      "Selected location"
+  ).trim();
+
+  return {
+    lat,
+    lon,
+    city: city || "Selected location"
+  };
+}
+
+function getBooleanSetting(settings, keys, defaultValue) {
+  for (const key of keys) {
+    if (typeof settings[key] === "boolean") return settings[key];
+  }
+  return defaultValue;
+}
+
+function safeHistoryKey(value) {
+  return String(value)
+    .replace(/[\/#[\]?]/g, "_")
+    .replace(/\s+/g, "_")
+    .slice(0, 1400);
+}
+
+function roundCoord(value) {
+  return Math.round(Number(value) * 10000) / 10000;
 }
 
 function buildDebugSummary({ weather, air }) {
