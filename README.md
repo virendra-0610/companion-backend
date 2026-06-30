@@ -112,3 +112,22 @@ https://YOUR_DOMAIN/api/task-reminder-check?secret=YOUR_CRON_SECRET
 ```
 
 Do not use `force=1` in cron jobs.
+
+
+## v5 Task reminder timezone fix
+
+Task reminder notifications now format due time in local timezone instead of UTC.
+
+Supported test params:
+
+```text
+/api/task-reminder-check?secret=YOUR_CRON_SECRET&force=1&timeZone=Asia/Kolkata
+/api/task-reminder-check?secret=YOUR_CRON_SECRET&dryRun=1&timeZone=Asia/Kolkata
+/api/task-reminder-check?secret=YOUR_CRON_SECRET&force=1&taskId=TASK_ID&timeZone=Asia/Kolkata
+```
+
+Production cron should remain:
+
+```text
+/api/task-reminder-check?secret=YOUR_CRON_SECRET
+```
