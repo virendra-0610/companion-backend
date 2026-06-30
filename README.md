@@ -4,38 +4,111 @@ Vercel backend endpoints for Companion PWA notifications.
 
 ## Endpoints
 
-- `/api/health`
-- `/api/test-push?secret=...`
-- `/api/weather-alert-check?secret=...`
-- `/api/weather-alert-check?secret=...&force=1` for manual weather push test only
-- `/api/debug-tokens?secret=...` to inspect stored token settings/location without exposing full FCM tokens
+### Health
 
-## v3 changes
+```text
+/api/health
+```
 
-Weather/AQI notification checks are now location-aware.
+### Test push
 
-The backend reads location from each Firestore `notification_tokens/{docId}` document using one of these shapes:
+```text
+/api/test-push?secret=YOUR_CRON_SECRET
+```
+
+### Weather/AQI check
+
+Location-aware weather/AQI notification check. Reads location from `notification_tokens/{tokenDocId}.selectedLocation`.
+
+```text
+/api/weather-alert-check?secret=YOUR_CRON_SECRET
+```
+
+Forced test:
+
+```text
+/api/weather-alert-check?secret=YOUR_CRON_SECRET&force=1
+```
+
+### Debug tokens
+
+```text
+/api/debug-tokens?secret=YOUR_CRON_SECRET
+```
+
+### Task reminder check
+
+Checks `todo_tasks` for pending reminders and sends push notifications.
+
+```text
+/api/task-reminder-check?secret=YOUR_CRON_SECRET
+```
+
+Forced test:
+
+```text
+/api/task-reminder-check?secret=YOUR_CRON_SECRET&force=1
+```
+
+Dry run:
+
+```text
+/api/task-reminder-check?secret=YOUR_CRON_SECRET&dryRun=1
+```
+
+## Firestore collections
+
+### notification_tokens
+
+Each token document should contain:
 
 ```json
 {
-  "selectedLocation": { "city": "Ahmedabad", "lat": 23.0225, "lon": 72.5714 }
+  "token": "FCM_TOKEN",
+  "weatherAlertsEnabled": true,
+  "aqiAlertsEnabled": true,
+  "taskRemindersEnabled": true,
+  "selectedLocation": {
+    "city": "Ahmedabad",
+    "lat": 23.0225,
+    "lon": 72.5714
+  }
 }
 ```
 
-or:
+### todo_tasks
+
+Task documents are expected to contain:
 
 ```json
 {
-  "city": "Ahmedabad",
-  "lat": 23.0225,
-  "lon": 72.5714
+  "id": "TASK_ID",
+  "title": "Task title",
+  "dueAt": "Firestore Timestamp",
+  "completed": false,
+  "deleted": false,
+  "token": "FCM_TOKEN",
+  "tokenDocId": "notification token doc id",
+  "reminder1DaySent": false,
+  "reminder30MinSent": false,
+  "reminderDueSent": false
 }
 ```
 
-Fallback remains `DEFAULT_CITY`, `DEFAULT_LAT`, and `DEFAULT_LON` if the token document has no location.
+## Recommended cron-job.org schedules
 
-Cron URL should use the stable production domain and no `force=1`:
+Weather/AQI:
 
-```txt
-https://companion-vercel-roan.vercel.app/api/weather-alert-check?secret=YOUR_SECRET
+```text
+Every 3 hours
+https://YOUR_DOMAIN/api/weather-alert-check?secret=YOUR_CRON_SECRET
 ```
+
+Task reminders:
+
+```text
+Every 5 minutes
+https://YOUR_DOMAIN/api/task-reminder-check?secret=YOUR_CRON_SECRET
+```
+
+Do not use `force=1` in cron jobs.
