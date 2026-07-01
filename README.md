@@ -131,3 +131,9 @@ Production cron should remain:
 ```text
 /api/task-reminder-check?secret=YOUR_CRON_SECRET
 ```
+
+
+## v6 changes
+
+- Task reminder token resolution now prefers the latest active `notification_tokens` document when older tasks point to stale token documents.
+- This prevents reminder flags from being marked as sent against old/stale task tokens after notification permission is toggled.
