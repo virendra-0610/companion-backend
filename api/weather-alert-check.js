@@ -5,6 +5,7 @@ import {
   sendPushToToken,
   wasRecentlySent,
   markSent,
+  writeNotificationHistory,
   removeBadToken
 } from "../lib/push.js";
 
@@ -132,11 +133,19 @@ export default async function handler(req, res) {
             await markSent({
               key: alertKey,
               payload: {
+                source: alert.type.includes("aqi") ? "aqi" : "weather",
+                type: alert.type,
+                title: alert.title,
+                body: alert.body,
+                status: "sent",
+                runMode: "scheduled",
                 city,
+                location: city,
                 lat,
                 lon,
                 alert,
                 tokenDocId: item.docId,
+                severity: alert.severity,
                 sentCount: 1
               }
             });
@@ -147,6 +156,24 @@ export default async function handler(req, res) {
 
           if (msg.includes("registration-token-not-registered") || msg.includes("invalid-registration-token")) {
             await removeBadToken(item.docId);
+          }
+
+          if (!force) {
+            await writeNotificationHistory({
+              key: safeHistoryKey(`weather_failed_${item.docId}_${city}_${alert.type}_${today}`),
+              source: alert.type.includes("aqi") ? "aqi" : "weather",
+              type: alert.type,
+              title: alert.title,
+              body: alert.body,
+              status: "failed",
+              runMode: "scheduled",
+              location: city,
+              city,
+              tokenDocId: item.docId,
+              severity: alert.severity,
+              error: msg,
+              data: { city, lat, lon, alert }
+            });
           }
 
           tokenResults.push({ docId: item.docId, ok: false, error: msg });
