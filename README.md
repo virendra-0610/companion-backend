@@ -1,139 +1,58 @@
 # Companion Backend
 
-Vercel backend endpoints for Companion PWA notifications.
+Vercel backend endpoints for Companion notifications.
 
 ## Endpoints
 
-### Health
-
 ```text
 /api/health
+/api/test-push?secret=...
+/api/debug-tokens?secret=...
+/api/weather-alert-check?secret=...
+/api/task-reminder-check?secret=...
+/api/cultural-reminder-check?secret=...
 ```
 
-### Test push
+## Cron jobs
+
+Weather/AQI every 3 hours:
 
 ```text
-/api/test-push?secret=YOUR_CRON_SECRET
+https://companion-vercel-roan.vercel.app/api/weather-alert-check?secret=YOUR_SECRET
 ```
 
-### Weather/AQI check
-
-Location-aware weather/AQI notification check. Reads location from `notification_tokens/{tokenDocId}.selectedLocation`.
+Task reminders every 1 minute:
 
 ```text
-/api/weather-alert-check?secret=YOUR_CRON_SECRET
+https://companion-vercel-roan.vercel.app/api/task-reminder-check?secret=YOUR_SECRET
 ```
 
-Forced test:
+Cultural reminders once daily, morning:
 
 ```text
-/api/weather-alert-check?secret=YOUR_CRON_SECRET&force=1
+https://companion-vercel-roan.vercel.app/api/cultural-reminder-check?secret=YOUR_SECRET
 ```
 
-### Debug tokens
+Optional weekly cultural tips, only on Monday UTC:
 
 ```text
-/api/debug-tokens?secret=YOUR_CRON_SECRET
+https://companion-vercel-roan.vercel.app/api/cultural-reminder-check?secret=YOUR_SECRET&tips=1
 ```
 
-### Task reminder check
+## Cultural reminder notes
 
-Checks `todo_tasks` for pending reminders and sends push notifications.
+- Uses `notification_tokens` settings.
+- Reads `culturalRemindersEnabled` / `culturalReminders`.
+- Uses `culturalCountryCode` first if present, otherwise tries selected location/city/timezone, then falls back to `DEFAULT_CULTURAL_COUNTRY` or `LV`.
+- Public holidays are fetched from Nager.Date.
+- `force=1` sends a test notification and does not save a normal history record.
+- `dryRun=1` returns JSON only and sends no notification.
+
+## Useful tests
 
 ```text
-/api/task-reminder-check?secret=YOUR_CRON_SECRET
+/api/cultural-reminder-check?secret=YOUR_SECRET&dryRun=1
+/api/cultural-reminder-check?secret=YOUR_SECRET&force=1
+/api/cultural-reminder-check?secret=YOUR_SECRET&dryRun=1&date=2026-06-23
+/api/cultural-reminder-check?secret=YOUR_SECRET&dryRun=1&tips=1&date=2026-06-29
 ```
-
-Forced test:
-
-```text
-/api/task-reminder-check?secret=YOUR_CRON_SECRET&force=1
-```
-
-Dry run:
-
-```text
-/api/task-reminder-check?secret=YOUR_CRON_SECRET&dryRun=1
-```
-
-## Firestore collections
-
-### notification_tokens
-
-Each token document should contain:
-
-```json
-{
-  "token": "FCM_TOKEN",
-  "weatherAlertsEnabled": true,
-  "aqiAlertsEnabled": true,
-  "taskRemindersEnabled": true,
-  "selectedLocation": {
-    "city": "Ahmedabad",
-    "lat": 23.0225,
-    "lon": 72.5714
-  }
-}
-```
-
-### todo_tasks
-
-Task documents are expected to contain:
-
-```json
-{
-  "id": "TASK_ID",
-  "title": "Task title",
-  "dueAt": "Firestore Timestamp",
-  "completed": false,
-  "deleted": false,
-  "token": "FCM_TOKEN",
-  "tokenDocId": "notification token doc id",
-  "reminder1DaySent": false,
-  "reminder30MinSent": false,
-  "reminderDueSent": false
-}
-```
-
-## Recommended cron-job.org schedules
-
-Weather/AQI:
-
-```text
-Every 3 hours
-https://YOUR_DOMAIN/api/weather-alert-check?secret=YOUR_CRON_SECRET
-```
-
-Task reminders:
-
-```text
-Every 5 minutes
-https://YOUR_DOMAIN/api/task-reminder-check?secret=YOUR_CRON_SECRET
-```
-
-Do not use `force=1` in cron jobs.
-
-
-## v5 Task reminder timezone fix
-
-Task reminder notifications now format due time in local timezone instead of UTC.
-
-Supported test params:
-
-```text
-/api/task-reminder-check?secret=YOUR_CRON_SECRET&force=1&timeZone=Asia/Kolkata
-/api/task-reminder-check?secret=YOUR_CRON_SECRET&dryRun=1&timeZone=Asia/Kolkata
-/api/task-reminder-check?secret=YOUR_CRON_SECRET&force=1&taskId=TASK_ID&timeZone=Asia/Kolkata
-```
-
-Production cron should remain:
-
-```text
-/api/task-reminder-check?secret=YOUR_CRON_SECRET
-```
-
-
-## v6 changes
-
-- Task reminder token resolution now prefers the latest active `notification_tokens` document when older tasks point to stale token documents.
-- This prevents reminder flags from being marked as sent against old/stale task tokens after notification permission is toggled.
