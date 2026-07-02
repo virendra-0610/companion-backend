@@ -14,6 +14,7 @@ export default async function handler(req, res) {
   const includeTips = String(req.query.tips || "").toLowerCase() === "true" || req.query.tips === "1";
   const date = String(req.query.date || "").trim();
   const timeZone = String(req.query.timeZone || process.env.DEFAULT_TIME_ZONE || "Asia/Kolkata").trim();
+  const countryCode = String(req.query.countryCode || req.query.country || "").trim();
 
   try {
     const tokens = await getNotificationTokens();
@@ -33,7 +34,8 @@ export default async function handler(req, res) {
       dryRun,
       includeTips,
       date,
-      timeZone
+      timeZone,
+      countryCode
     });
 
     return res.status(200).json({

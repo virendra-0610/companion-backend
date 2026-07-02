@@ -1,58 +1,40 @@
-# Companion Backend
+# companion-backend v9
 
-Vercel backend endpoints for Companion notifications.
+Backend scheduler endpoints for Companion.
+
+## Changes in v9
+
+- Fixes cultural-reminder dryRun JSON parsing failure by reading holiday API response as text before JSON parsing.
+- Uses Nager.Date v4 endpoint first and v3 PublicHolidays endpoint as fallback.
+- Adds small Latvia 2026 fallback list so dry-run tests for 2026-06-23/24 work even if the holiday API returns an empty/non-JSON response.
+- Keeps all existing endpoints from v8.
 
 ## Endpoints
 
-```text
-/api/health
-/api/test-push?secret=...
-/api/debug-tokens?secret=...
-/api/weather-alert-check?secret=...
-/api/task-reminder-check?secret=...
-/api/cultural-reminder-check?secret=...
-```
+- `/api/health`
+- `/api/weather-alert-check?secret=...`
+- `/api/task-reminder-check?secret=...`
+- `/api/cultural-reminder-check?secret=...`
+- `/api/debug-tokens?secret=...`
 
-## Cron jobs
+## Cron URLs
 
-Weather/AQI every 3 hours:
+Weather/AQI:
 
 ```text
-https://companion-vercel-roan.vercel.app/api/weather-alert-check?secret=YOUR_SECRET
+https://companion-vercel-roan.vercel.app/api/weather-alert-check?secret=companion_backend_secret
 ```
 
-Task reminders every 1 minute:
+Task reminders:
 
 ```text
-https://companion-vercel-roan.vercel.app/api/task-reminder-check?secret=YOUR_SECRET
+https://companion-vercel-roan.vercel.app/api/task-reminder-check?secret=companion_backend_secret
 ```
 
-Cultural reminders once daily, morning:
+Cultural reminders:
 
 ```text
-https://companion-vercel-roan.vercel.app/api/cultural-reminder-check?secret=YOUR_SECRET
+https://companion-vercel-roan.vercel.app/api/cultural-reminder-check?secret=companion_backend_secret
 ```
 
-Optional weekly cultural tips, only on Monday UTC:
-
-```text
-https://companion-vercel-roan.vercel.app/api/cultural-reminder-check?secret=YOUR_SECRET&tips=1
-```
-
-## Cultural reminder notes
-
-- Uses `notification_tokens` settings.
-- Reads `culturalRemindersEnabled` / `culturalReminders`.
-- Uses `culturalCountryCode` first if present, otherwise tries selected location/city/timezone, then falls back to `DEFAULT_CULTURAL_COUNTRY` or `LV`.
-- Public holidays are fetched from Nager.Date.
-- `force=1` sends a test notification and does not save a normal history record.
-- `dryRun=1` returns JSON only and sends no notification.
-
-## Useful tests
-
-```text
-/api/cultural-reminder-check?secret=YOUR_SECRET&dryRun=1
-/api/cultural-reminder-check?secret=YOUR_SECRET&force=1
-/api/cultural-reminder-check?secret=YOUR_SECRET&dryRun=1&date=2026-06-23
-/api/cultural-reminder-check?secret=YOUR_SECRET&dryRun=1&tips=1&date=2026-06-29
-```
+Do not add `force=1` or `dryRun=1` to cron jobs.
