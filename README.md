@@ -1,46 +1,23 @@
-# companion-backend v9
+# Companion Backend v11 - Task Expired Cleanup
 
-Backend scheduler endpoints for Companion.
+Adds `cleanupExpired=1` to `/api/task-reminder-check` for one-time cleanup of old expired pending tasks.
 
-## Changes in v9
-
-- Fixes cultural-reminder dryRun JSON parsing failure by reading holiday API response as text before JSON parsing.
-- Uses Nager.Date v4 endpoint first and v3 PublicHolidays endpoint as fallback.
-- Adds small Latvia 2026 fallback list so dry-run tests for 2026-06-23/24 work even if the holiday API returns an empty/non-JSON response.
-- Keeps all existing endpoints from v8.
-
-## Endpoints
-
-- `/api/health`
-- `/api/weather-alert-check?secret=...`
-- `/api/task-reminder-check?secret=...`
-- `/api/cultural-reminder-check?secret=...`
-- `/api/debug-tokens?secret=...`
-
-## Cron URLs
-
-Weather/AQI:
+## Normal cron URL
 
 ```text
-https://companion-vercel-roan.vercel.app/api/weather-alert-check?secret=companion_backend_secret
+/api/task-reminder-check?secret=YOUR_SECRET
 ```
 
-Task reminders:
+## One-time expired task cleanup
 
 ```text
-https://companion-vercel-roan.vercel.app/api/task-reminder-check?secret=companion_backend_secret
+/api/task-reminder-check?secret=YOUR_SECRET&cleanupExpired=1&timeZone=Asia/Kolkata
 ```
 
-Cultural reminders:
+## Dry run cleanup preview
 
 ```text
-https://companion-vercel-roan.vercel.app/api/cultural-reminder-check?secret=companion_backend_secret
+/api/task-reminder-check?secret=YOUR_SECRET&cleanupExpired=1&dryRun=1&timeZone=Asia/Kolkata
 ```
 
-Do not add `force=1` or `dryRun=1` to cron jobs.
-
-## v10 task cron hardening
-- Task reminder endpoint returns HTTP 200 with `ok:false` for handled errors so cron-job.org does not disable the job.
-- Task scan falls back to full collection scan if Firestore filtered query fails.
-- Old expired incomplete tasks are auto-completed by backend after a grace period.
-- Per-task errors are isolated so one bad task cannot fail the whole cron run.
+Do not add `cleanupExpired=1` to cron. Use it manually when old expired pending tasks need cleanup.
