@@ -38,3 +38,9 @@ https://companion-vercel-roan.vercel.app/api/cultural-reminder-check?secret=comp
 ```
 
 Do not add `force=1` or `dryRun=1` to cron jobs.
+
+## v10 task cron hardening
+- Task reminder endpoint returns HTTP 200 with `ok:false` for handled errors so cron-job.org does not disable the job.
+- Task scan falls back to full collection scan if Firestore filtered query fails.
+- Old expired incomplete tasks are auto-completed by backend after a grace period.
+- Per-task errors are isolated so one bad task cannot fail the whole cron run.
