@@ -1,23 +1,24 @@
-# Companion Backend v11 - Task Expired Cleanup
+# Companion Backend v12 - Token Dedupe Safety Net
 
-Adds `cleanupExpired=1` to `/api/task-reminder-check` for one-time cleanup of old expired pending tasks.
+Adds backend-level protection for stale/duplicate FCM tokens.
 
-## Normal cron URL
+## Important endpoints
 
-```text
-/api/task-reminder-check?secret=YOUR_SECRET
-```
+Health:
+/api/health
 
-## One-time expired task cleanup
+Debug effective delivery token:
+/api/debug-tokens?secret=YOUR_SECRET
 
-```text
-/api/task-reminder-check?secret=YOUR_SECRET&cleanupExpired=1&timeZone=Asia/Kolkata
-```
+Show all token docs:
+/api/debug-tokens?secret=YOUR_SECRET&all=1
 
-## Dry run cleanup preview
+Preview token cleanup:
+/api/cleanup-tokens?secret=YOUR_SECRET&dryRun=1
 
-```text
-/api/task-reminder-check?secret=YOUR_SECRET&cleanupExpired=1&dryRun=1&timeZone=Asia/Kolkata
-```
+Disable old active tokens and keep only latest:
+/api/cleanup-tokens?secret=YOUR_SECRET
 
-Do not add `cleanupExpired=1` to cron. Use it manually when old expired pending tasks need cleanup.
+## Policy
+
+Even if Firestore accidentally contains multiple `enabled: true` token documents, delivery endpoints use only the latest active token. This prevents duplicate notifications and location mismatch.
