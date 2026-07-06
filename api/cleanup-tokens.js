@@ -1,5 +1,5 @@
 import { requireCronSecret } from "../lib/auth.js";
-import { disableOlderActiveTokens, getAllNotificationTokens, getNotificationTokens } from "../lib/push.js";
+import { disableOlderActiveTokens, getAllNotificationTokens, getNotificationTokens, TOKEN_POLICY } from "../lib/push.js";
 
 export default async function handler(req, res) {
   const auth = requireCronSecret(req);
@@ -18,27 +18,27 @@ export default async function handler(req, res) {
         ok: true,
         mode: "cleanup-tokens",
         dryRun: true,
-        tokenPolicy: "single_latest_active_token",
+        tokenPolicy: TOKEN_POLICY,
         deliveryTokenCount: beforeDelivery.length,
         rawActiveTokenCount: beforeActive.length,
         wouldDisable: Math.max(0, beforeActive.length - beforeDelivery.length),
-        keep: beforeDelivery[0]
-          ? {
-              docId: beforeDelivery[0].docId,
-              tokenTail: beforeDelivery[0].token.slice(-8),
-              location: beforeDelivery[0].data?.selectedLocation?.label || beforeDelivery[0].data?.selectedLocation?.city || beforeDelivery[0].data?.city || null
-            }
-          : null,
+        keep: beforeDelivery.map((item) => ({
+          docId: item.docId,
+          tokenTail: item.token.slice(-8),
+          location: item.data?.selectedLocation?.label || item.data?.selectedLocation?.city || item.data?.city || null,
+          platform: item.data?.platform ?? item.data?.devicePlatform ?? null
+        })),
         activeTokens: beforeActive.map((item) => ({
           docId: item.docId,
           tokenTail: item.token.slice(-8),
           location: item.data?.selectedLocation?.label || item.data?.selectedLocation?.city || item.data?.city || null,
+          platform: item.data?.platform ?? item.data?.devicePlatform ?? null,
           sortTime: item.sortTime || null
         }))
       });
     }
 
-    const cleanup = await disableOlderActiveTokens({ reason: "manual_backend_cleanup_tokens_endpoint" });
+    const cleanup = await disableOlderActiveTokens({ reason: "manual_backend_cleanup_duplicate_token_docs" });
     const afterDelivery = await getNotificationTokens();
     const afterActive = await getAllNotificationTokens({ includeDisabled: false });
 
@@ -46,7 +46,7 @@ export default async function handler(req, res) {
       ok: true,
       mode: "cleanup-tokens",
       dryRun: false,
-      tokenPolicy: "single_latest_active_token",
+      tokenPolicy: TOKEN_POLICY,
       before: {
         deliveryTokenCount: beforeDelivery.length,
         rawActiveTokenCount: beforeActive.length

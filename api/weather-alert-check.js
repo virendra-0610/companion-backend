@@ -6,7 +6,8 @@ import {
   wasRecentlySent,
   markSent,
   writeNotificationHistory,
-  removeBadToken
+  removeBadToken,
+  TOKEN_POLICY
 } from "../lib/push.js";
 
 export default async function handler(req, res) {
@@ -65,10 +66,38 @@ export default async function handler(req, res) {
       }
 
       const today = new Date().toISOString().slice(0, 10);
+      const alertKey = safeHistoryKey(`weather_${roundCoord(lat)}_${roundCoord(lon)}_${city}_${alert.type}_${today}`);
       const tokenResults = [];
       let groupSent = 0;
       let groupSkipped = 0;
       let groupFailed = 0;
+
+      if (!force) {
+        const recentlySent = await wasRecentlySent({ key: alertKey, hours: 6 });
+        if (recentlySent) {
+          totalSkipped += group.tokens.length;
+          groupResults.push({
+            city,
+            lat,
+            lon,
+            sent: 0,
+            skipped: group.tokens.length,
+            failed: 0,
+            forced: force,
+            alert,
+            debug,
+            duplicateProtectionKey: alertKey,
+            message: "Duplicate protection active",
+            results: group.tokens.map((item) => ({
+              docId: item.docId,
+              ok: true,
+              skipped: true,
+              reason: "Duplicate protection active"
+            }))
+          });
+          continue;
+        }
+      }
 
       for (const item of group.tokens) {
         const settings = item.data || {};
@@ -95,22 +124,6 @@ export default async function handler(req, res) {
           continue;
         }
 
-        const alertKey = safeHistoryKey(`weather_${item.docId}_${city}_${alert.type}_${today}`);
-
-        if (!force) {
-          const recentlySent = await wasRecentlySent({ key: alertKey, hours: 6 });
-          if (recentlySent) {
-            groupSkipped += 1;
-            tokenResults.push({
-              docId: item.docId,
-              ok: true,
-              skipped: true,
-              reason: "Duplicate protection active"
-            });
-            continue;
-          }
-        }
-
         try {
           const messageId = await sendPushToToken({
             token: item.token,
@@ -128,28 +141,6 @@ export default async function handler(req, res) {
 
           groupSent += 1;
           tokenResults.push({ docId: item.docId, ok: true, messageId });
-
-          if (!force) {
-            await markSent({
-              key: alertKey,
-              payload: {
-                source: alert.type.includes("aqi") ? "aqi" : "weather",
-                type: alert.type,
-                title: alert.title,
-                body: alert.body,
-                status: "sent",
-                runMode: "scheduled",
-                city,
-                location: city,
-                lat,
-                lon,
-                alert,
-                tokenDocId: item.docId,
-                severity: alert.severity,
-                sentCount: 1
-              }
-            });
-          }
         } catch (error) {
           const msg = error.message || "";
           groupFailed += 1;
@@ -158,26 +149,52 @@ export default async function handler(req, res) {
             await removeBadToken(item.docId);
           }
 
-          if (!force) {
-            await writeNotificationHistory({
-              key: safeHistoryKey(`weather_failed_${item.docId}_${city}_${alert.type}_${today}`),
-              source: alert.type.includes("aqi") ? "aqi" : "weather",
-              type: alert.type,
-              title: alert.title,
-              body: alert.body,
-              status: "failed",
-              runMode: "scheduled",
-              location: city,
-              city,
-              tokenDocId: item.docId,
-              severity: alert.severity,
-              error: msg,
-              data: { city, lat, lon, alert }
-            });
-          }
-
           tokenResults.push({ docId: item.docId, ok: false, error: msg });
         }
+      }
+
+      if (!force && groupSent > 0) {
+        await markSent({
+          key: alertKey,
+          payload: {
+            source: alert.type.includes("aqi") ? "aqi" : "weather",
+            type: alert.type,
+            title: alert.title,
+            body: alert.body,
+            status: "sent",
+            runMode: "scheduled",
+            city,
+            location: city,
+            lat,
+            lon,
+            alert,
+            tokenDocId: group.tokens[0]?.docId || null,
+            tokenDocIds: group.tokens.map((item) => item.docId),
+            severity: alert.severity,
+            sentCount: groupSent,
+            failedCount: groupFailed,
+            skippedCount: groupSkipped,
+            tokenPolicy: TOKEN_POLICY
+          }
+        });
+      }
+
+      if (!force && groupSent === 0 && groupFailed > 0) {
+        await writeNotificationHistory({
+          key: safeHistoryKey(`weather_failed_${roundCoord(lat)}_${roundCoord(lon)}_${city}_${alert.type}_${today}`),
+          source: alert.type.includes("aqi") ? "aqi" : "weather",
+          type: alert.type,
+          title: alert.title,
+          body: alert.body,
+          status: "failed",
+          runMode: "scheduled",
+          location: city,
+          city,
+          tokenDocId: group.tokens[0]?.docId || null,
+          severity: alert.severity,
+          error: tokenResults.find((item) => item.ok === false)?.error || "All token deliveries failed",
+          data: { city, lat, lon, alert, tokenPolicy: TOKEN_POLICY, tokenResults }
+        });
       }
 
       totalSent += groupSent;
@@ -194,6 +211,7 @@ export default async function handler(req, res) {
         forced: force,
         alert,
         debug,
+        duplicateProtectionKey: force ? null : alertKey,
         results: tokenResults
       });
     }
@@ -201,6 +219,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       mode: "location-aware",
+      tokenPolicy: TOKEN_POLICY,
       forced: force,
       tokenCount: tokens.length,
       locationCount: groups.length,

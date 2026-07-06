@@ -1,5 +1,6 @@
 import { requireCronSecret } from "../lib/auth.js";
 import { checkTaskReminders } from "../lib/taskReminders.js";
+import { TOKEN_POLICY } from "../lib/push.js";
 
 export default async function handler(req, res) {
   const auth = requireCronSecret(req);
@@ -28,7 +29,8 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       mode: "task-reminder-check",
-      version: "v11-expired-cleanup",
+      version: "v13-multi-device",
+      tokenPolicy: TOKEN_POLICY,
       force,
       dryRun,
       cleanupExpired,
@@ -42,7 +44,8 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: false,
       mode: "task-reminder-check",
-      version: "v11-expired-cleanup",
+      version: "v13-multi-device",
+      tokenPolicy: TOKEN_POLICY,
       error: error.message || String(error),
       stack: process.env.NODE_ENV === "development" ? error.stack : undefined
     });

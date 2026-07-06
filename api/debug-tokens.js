@@ -1,5 +1,5 @@
 import { requireCronSecret } from "../lib/auth.js";
-import { getAllNotificationTokens, getNotificationTokens } from "../lib/push.js";
+import { getAllNotificationTokens, getNotificationTokens, TOKEN_POLICY } from "../lib/push.js";
 
 export default async function handler(req, res) {
   const auth = requireCronSecret(req);
@@ -18,18 +18,21 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true,
-      tokenPolicy: "single_latest_active_token",
+      tokenPolicy: TOKEN_POLICY,
       tokenCount: deliveryTokens.length,
       rawActiveTokenCount: activeRawTokens.length,
       totalTokenDocs: allTokens.length,
       ignoredActiveDuplicates: Math.max(0, activeRawTokens.length - deliveryTokens.length),
       showAll,
+      appUrl: process.env.APP_URL || "https://companion-web-omega.vercel.app/",
       tokens: visibleTokens.map((item) => ({
         docId: item.docId,
         tokenTail: item.token.slice(-8),
         enabled: item.data?.enabled !== false,
         activeForDelivery: deliveryDocIds.has(item.docId),
         sortTime: item.sortTime || null,
+        platform: item.data?.platform ?? item.data?.devicePlatform ?? null,
+        deviceId: item.data?.deviceId ?? item.data?.installationId ?? null,
         weatherAlertsEnabled: item.data?.weatherAlertsEnabled ?? item.data?.weatherAlerts ?? item.data?.enableWeatherAlerts ?? null,
         aqiAlertsEnabled: item.data?.aqiAlertsEnabled ?? item.data?.aqiAlerts ?? item.data?.enableAqiAlerts ?? null,
         taskRemindersEnabled: item.data?.taskRemindersEnabled ?? item.data?.taskReminders ?? null,

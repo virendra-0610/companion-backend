@@ -1,8 +1,8 @@
 {
   "name": "companion-backend",
-  "version": "1.0.0",
+  "version": "1.0.13",
   "private": true,
-  "description": "Backend scheduler endpoints for Companion app notifications",
+  "description": "Backend scheduler endpoints for Companion app notifications with multi-device delivery",
   "type": "module",
   "scripts": {
     "start": "vercel dev",

@@ -1,5 +1,5 @@
 import { requireCronSecret } from "../lib/auth.js";
-import { getNotificationTokens } from "../lib/push.js";
+import { getNotificationTokens, TOKEN_POLICY } from "../lib/push.js";
 import { checkCulturalReminders } from "../lib/culturalReminders.js";
 
 export default async function handler(req, res) {
@@ -41,6 +41,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       mode: "cultural-reminder-check",
+      tokenPolicy: TOKEN_POLICY,
       ...result
     });
   } catch (error) {

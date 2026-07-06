@@ -1,5 +1,5 @@
 import { requireCronSecret } from "../lib/auth.js";
-import { getNotificationTokens, sendPushToToken } from "../lib/push.js";
+import { getNotificationTokens, sendPushToToken, TOKEN_POLICY } from "../lib/push.js";
 
 export default async function handler(req, res) {
   const auth = requireCronSecret(req);
@@ -32,7 +32,7 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({ ok: true, tokenCount: tokens.length, results });
+    return res.status(200).json({ ok: true, tokenPolicy: TOKEN_POLICY, tokenCount: tokens.length, results });
   } catch (error) {
     return res.status(500).json({ ok: false, error: error.message });
   }
